@@ -427,3 +427,1121 @@ kubectl get pods -l app=v1
 
 And we see the Pod.
 
+## Running Multiple Instances of Your App
+
+To scale a deployment/app with `kubectl` and to see the load balancing in action.
+
+To list your deployments use the get deployments command: `kubectl get deployments`
+
+You get:
+
+```shell
+$ kubectl get deployments
+NAME                  DESIRED   CURRENT   UP-TO-DATE   AVAILABLE   AGE
+kubernetes-bootcamp   1         1         1            1           2m
+```
+
+We should have 1 Pod. If not, run the command again. This shows:
+
+* The DESIRED state is showing the configured number of replicas
+* The CURRENT state show how many replicas are running now
+* The UP-TO-DATE is the number of replicas that were updated to match the desired (configured) state
+* The AVAILABLE state shows how many replicas are actually AVAILABLE to the users
+
+Next, let’s scale the Deployment to 4 replicas. We’ll use the `kubectl scale` command, followed by the deployment type, name and desired number of instances:
+
+```shell
+$ kubectl scale deployments/kubernetes-bootcamp --replicas=4
+deployment "kubernetes-bootcamp" scaled
+```
+
+To list your Deployments once again, use get deployments:
+
+```shell
+$ kubectl get deployments
+NAME                  DESIRED   CURRENT   UP-TO-DATE   AVAILABLE   AGE
+kubernetes-bootcamp   4         4         4            4           3m
+```
+
+The change was applied, and we have 4 instances of the application available. Next, let’s check if the number of Pods changed:
+
+```shell
+$ kubectl get pods -o wide
+NAME                                   READY     STATUS    RESTARTS   AGE       IP           NODE
+kubernetes-bootcamp-5dbf48f7d4-2xp6g   1/1       Running   0          3m        172.18.0.2   host01
+kubernetes-bootcamp-5dbf48f7d4-5n2cc   1/1       Running   0          1m        172.18.0.5   host01
+kubernetes-bootcamp-5dbf48f7d4-mc585   1/1       Running   0          1m        172.18.0.7   host01
+kubernetes-bootcamp-5dbf48f7d4-vztps   1/1       Running   0          1m        172.18.0.6   host01
+```
+There are 4 Pods now, with different IP addresses. The change was registered in the Deployment events log. To check that, use the describe command:
+
+```shell
+$ kubectl describe deployments/kubernetes-bootcamp
+Name:                   kubernetes-bootcamp
+Namespace:              default
+CreationTimestamp:      Wed, 11 Apr 2018 08:27:44 +0000
+Labels:                 run=kubernetes-bootcamp
+Annotations:            deployment.kubernetes.io/revision=1
+Selector:               run=kubernetes-bootcamp
+Replicas:               4 desired | 4 updated | 4 total | 4 available | 0 unavailable
+StrategyType:           RollingUpdate
+MinReadySeconds:        0
+RollingUpdateStrategy:  1 max unavailable, 1 max surge
+Pod Template:
+  Labels:  run=kubernetes-bootcamp
+  Containers:
+   kubernetes-bootcamp:
+    Image:        gcr.io/google-samples/kubernetes-bootcamp:v1
+    Port:         8080/TCP
+    Environment:  <none>
+    Mounts:       <none>
+  Volumes:        <none>
+Conditions:
+  Type           Status  Reason
+  ----           ------  ------
+  Available      True    MinimumReplicasAvailable
+OldReplicaSets:  <none>
+NewReplicaSet:   kubernetes-bootcamp-5dbf48f7d4 (4/4 replicas created)
+Events:
+  Type    Reason             Age   From                   Message
+  ----    ------             ----  ----                   -------
+  Normal  ScalingReplicaSet  4m    deployment-controller  Scaled up replica set kubernetes-bootcamp-5dbf48f7d4 to 1
+  Normal  ScalingReplicaSet  1m    deployment-controller  Scaled up replica set kubernetes-bootcamp-5dbf48f7d4 to 4
+```
+
+You can also view in the output of this command that there are 4 replicas now.
+
+### Load Balancing
+
+Let’s check that the Service is load-balancing the traffic. To find out the exposed IP and Port we can use the describe service as we learned in the previously Module:
+
+```shell
+$ kubectl describe services/kubernetes-bootcamp
+Name:                     kubernetes-bootcamp
+Namespace:                default
+Labels:                   run=kubernetes-bootcamp
+Annotations:              <none>
+Selector:                 run=kubernetes-bootcamp
+Type:                     NodePort
+IP:                       10.104.24.185
+Port:                     <unset>  8080/TCP
+TargetPort:               8080/TCP
+NodePort:                 <unset>  30555/TCP
+Endpoints:                172.18.0.2:8080,172.18.0.5:8080,172.18.0.6:8080 + 1 more...
+Session Affinity:         None
+External Traffic Policy:  Cluster
+Events:                   <none>
+```
+
+Create an environment variable called NODE_PORT that has a value as the Node port:
+
+```shell
+$ export NODE_PORT=$(kubectl get services/kubernetes-bootcamp -o go-template='{{(index .spec.ports 0).nodePort}}')
+$ echo NODE_PORT=$NODE_PORT
+NODE_PORT=30555
+```
+
+Next, we’ll do a `curl` to the exposed IP and port. Execute the command multiple times:
+
+```shell
+$ curl $(minikube ip):$NODE_PORT
+Hello Kubernetes bootcamp! | Running on: kubernetes-bootcamp-5dbf48f7d4-mc585 | v=1
+```
+
+We hit a different Pod with every request. This demonstrates that the load-balancing is working
+
+### Scale Down
+
+To scale down the Service to 2 replicas, run again the scale command:
+
+```shell
+$ kubectl scale deployments/kubernetes-bootcamp --replicas=2
+deployment "kubernetes-bootcamp" scaled
+```
+
+List the Deployments to check if the change was applied with the get deployments command:
+
+```shell
+$ kubectl get deployments
+NAME                  DESIRED   CURRENT   UP-TO-DATE   AVAILABLE   AGE
+kubernetes-bootcamp   2         2         2            2           33s
+```
+
+The number of replicas decreased to 2. List the number of Pods, with get pods:
+
+```shell
+$ kubectl get pods -o wide
+NAME                                   READY     STATUS        RESTARTS   AGE       IP           NODE
+kubernetes-bootcamp-5dbf48f7d4-gg559   1/1       Terminating   0          25s       172.18.0.7   host01
+kubernetes-bootcamp-5dbf48f7d4-lb8gc   1/1       Terminating   0          25s       172.18.0.6   host01
+kubernetes-bootcamp-5dbf48f7d4-sx97n   1/1       Running       0          35s       172.18.0.2   host01
+kubernetes-bootcamp-5dbf48f7d4-tpxs9   1/1       Running       0          25s       172.18.0.5   host01
+```
+
+if you wait longer
+
+```shell
+$ kubectl get pods -o wide
+NAME                                   READY     STATUS    RESTARTS   AGE       IP           NODE
+kubernetes-bootcamp-5dbf48f7d4-sx97n   1/1       Running   0          2m        172.18.0.2   host01
+kubernetes-bootcamp-5dbf48f7d4-tpxs9   1/1       Running   0          2m        172.18.0.5   host01
+```
+
+This confirms that 2 Pods were terminated.
+
+
+
+## Performing a Rolling Update
+
+
+To update a deployed application with kubectl set image and to rollback with the rollout undo command.
+
+
+### Update the version of the app
+
+To list your deployments use the get deployments command:
+
+```shell
+$ kubectl get deployments
+NAME                  DESIRED   CURRENT   UP-TO-DATE   AVAILABLE   AGE
+kubernetes-bootcamp   4         4         4            4           41s
+```
+
+To list the running Pods use the get pods command:
+
+```shell
+$ kubectl get pods
+NAME                                   READY     STATUS    RESTARTS   AGE
+kubernetes-bootcamp-5dbf48f7d4-5wzvs   1/1       Running   0          1m
+kubernetes-bootcamp-5dbf48f7d4-d4gsv   1/1       Running   0          1m
+kubernetes-bootcamp-5dbf48f7d4-r4vww   1/1       Running   0          1m
+kubernetes-bootcamp-5dbf48f7d4-v8m9c   1/1       Running   0          1m
+```
+
+To view the current image version of the app, run a describe command against the Pods (look at the Image field):
+
+```shell
+$ kubectl describe pods
+Name:           kubernetes-bootcamp-5dbf48f7d4-5wzvs
+Namespace:      default
+Node:           host01/172.17.0.126
+Start Time:     Wed, 11 Apr 2018 09:20:07 +0000
+Labels:         pod-template-hash=1869049380
+                run=kubernetes-bootcamp
+Annotations:    <none>
+Status:         Running
+IP:             172.18.0.2
+Controlled By:  ReplicaSet/kubernetes-bootcamp-5dbf48f7d4
+Containers:
+  kubernetes-bootcamp:
+    Container ID:   docker://789892b7a0c63f8b0514490b991bafd63559f0f51639c70dabf84e703b04bd27
+    Image:          gcr.io/google-samples/kubernetes-bootcamp:v1
+    Image ID:       docker-pullable://jocatalin/kubernetes-bootcamp@sha256:0d6b8ee63bb57c5f5b6156f446b3bc3b3c143d233037f3a2f00e279c8fcc64af
+    Port:           8080/TCP
+    State:          Running
+      Started:      Wed, 11 Apr 2018 09:20:15 +0000
+    Ready:          True
+    Restart Count:  0
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from default-token-lk44c (ro)
+Conditions:
+  Type           Status
+  Initialized    True
+  Ready          True
+  PodScheduled   True
+Volumes:
+  default-token-lk44c:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  default-token-lk44c
+    Optional:    false
+QoS Class:       BestEffort
+Node-Selectors:  <none>
+Tolerations:     <none>
+Events:
+  Type     Reason                 Age              From               Message
+  ----     ------                 ----             ----               -------
+  Warning  FailedScheduling       2m (x2 over 2m)  default-scheduler  0/1 nodes are available: 1 NodeNotReady.
+  Normal   Scheduled              2m               default-scheduler  Successfully assigned kubernetes-bootcamp-5dbf48f7d4-5wzvs to host01
+  Normal   SuccessfulMountVolume  2m               kubelet, host01    MountVolume.SetUp succeeded for volume "default-token-lk44c"
+  Normal   Pulled                 2m               kubelet, host01    Container image "gcr.io/google-samples/kubernetes-bootcamp:v1" already present on machine
+  Normal   Created                2m               kubelet, host01    Created container
+  Normal   Started                2m               kubelet, host01    Started container
+
+
+Name:           kubernetes-bootcamp-5dbf48f7d4-d4gsv
+Namespace:      default
+Node:           host01/172.17.0.126
+Start Time:     Wed, 11 Apr 2018 09:20:07 +0000
+Labels:         pod-template-hash=1869049380
+                run=kubernetes-bootcamp
+Annotations:    <none>
+Status:         Running
+IP:             172.18.0.5
+Controlled By:  ReplicaSet/kubernetes-bootcamp-5dbf48f7d4
+Containers:
+  kubernetes-bootcamp:
+    Container ID:   docker://6cbba9df88931fad3862f42a942e6ed4a2b9f62e1d4e80f3b440331f9d447c7e
+    Image:          gcr.io/google-samples/kubernetes-bootcamp:v1
+    Image ID:       docker-pullable://jocatalin/kubernetes-bootcamp@sha256:0d6b8ee63bb57c5f5b6156f446b3bc3b3c143d233037f3a2f00e279c8fcc64af
+    Port:           8080/TCP
+    State:          Running
+      Started:      Wed, 11 Apr 2018 09:20:15 +0000
+    Ready:          True
+    Restart Count:  0
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from default-token-lk44c (ro)
+Conditions:
+  Type           Status
+  Initialized    True
+  Ready          True
+  PodScheduled   True
+Volumes:
+  default-token-lk44c:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  default-token-lk44c
+    Optional:    false
+QoS Class:       BestEffort
+Node-Selectors:  <none>
+Tolerations:     <none>
+Events:
+  Type     Reason                 Age              From               Message
+  ----     ------                 ----             ----               -------
+  Warning  FailedScheduling       2m (x2 over 2m)  default-scheduler  0/1 nodes are available: 1 NodeNotReady.
+  Normal   Scheduled              2m               default-scheduler  Successfully assigned kubernetes-bootcamp-5dbf48f7d4-d4gsv to host01
+  Normal   SuccessfulMountVolume  2m               kubelet, host01    MountVolume.SetUp succeeded for volume "default-token-lk44c"
+  Normal   Pulled                 2m               kubelet, host01    Container image "gcr.io/google-samples/kubernetes-bootcamp:v1" already present on machine
+  Normal   Created                2m               kubelet, host01    Created container
+  Normal   Started                2m               kubelet, host01    Started container
+
+
+Name:           kubernetes-bootcamp-5dbf48f7d4-r4vww
+Namespace:      default
+Node:           host01/172.17.0.126
+Start Time:     Wed, 11 Apr 2018 09:20:07 +0000
+Labels:         pod-template-hash=1869049380
+                run=kubernetes-bootcamp
+Annotations:    <none>
+Status:         Running
+IP:             172.18.0.4
+Controlled By:  ReplicaSet/kubernetes-bootcamp-5dbf48f7d4
+Containers:
+  kubernetes-bootcamp:
+    Container ID:   docker://c88051e4da1dfeb8068c80b1afceb652e1e4a4be0ae19c22a488374c2f69593b
+    Image:          gcr.io/google-samples/kubernetes-bootcamp:v1
+    Image ID:       docker-pullable://jocatalin/kubernetes-bootcamp@sha256:0d6b8ee63bb57c5f5b6156f446b3bc3b3c143d233037f3a2f00e279c8fcc64af
+    Port:           8080/TCP
+    State:          Running
+      Started:      Wed, 11 Apr 2018 09:20:15 +0000
+    Ready:          True
+    Restart Count:  0
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from default-token-lk44c (ro)
+Conditions:
+  Type           Status
+  Initialized    True
+  Ready          True
+  PodScheduled   True
+Volumes:
+  default-token-lk44c:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  default-token-lk44c
+    Optional:    false
+QoS Class:       BestEffort
+Node-Selectors:  <none>
+Tolerations:     <none>
+Events:
+  Type     Reason                 Age              From               Message
+  ----     ------                 ----             ----               -------
+  Warning  FailedScheduling       2m (x2 over 2m)  default-scheduler  0/1 nodes are available: 1 NodeNotReady.
+  Normal   Scheduled              2m               default-scheduler  Successfully assigned kubernetes-bootcamp-5dbf48f7d4-r4vww to host01
+  Normal   SuccessfulMountVolume  2m               kubelet, host01    MountVolume.SetUp succeeded for volume "default-token-lk44c"
+  Normal   Pulled                 2m               kubelet, host01    Container image "gcr.io/google-samples/kubernetes-bootcamp:v1" already present on machine
+  Normal   Created                2m               kubelet, host01    Created container
+  Normal   Started                2m               kubelet, host01    Started container
+
+
+Name:           kubernetes-bootcamp-5dbf48f7d4-v8m9c
+Namespace:      default
+Node:           host01/172.17.0.126
+Start Time:     Wed, 11 Apr 2018 09:20:07 +0000
+Labels:         pod-template-hash=1869049380
+                run=kubernetes-bootcamp
+Annotations:    <none>
+Status:         Running
+IP:             172.18.0.3
+Controlled By:  ReplicaSet/kubernetes-bootcamp-5dbf48f7d4
+Containers:
+  kubernetes-bootcamp:
+    Container ID:   docker://f8d5688024f0cca206136a6ca7dedd3a7f0d4bfe27e12b4e411de3c1f7d9e7fe
+    Image:          gcr.io/google-samples/kubernetes-bootcamp:v1
+    Image ID:       docker-pullable://jocatalin/kubernetes-bootcamp@sha256:0d6b8ee63bb57c5f5b6156f446b3bc3b3c143d233037f3a2f00e279c8fcc64af
+    Port:           8080/TCP
+    State:          Running
+      Started:      Wed, 11 Apr 2018 09:20:15 +0000
+    Ready:          True
+    Restart Count:  0
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from default-token-lk44c (ro)
+Conditions:
+  Type           Status
+  Initialized    True
+  Ready          True
+  PodScheduled   True
+Volumes:
+  default-token-lk44c:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  default-token-lk44c
+    Optional:    false
+QoS Class:       BestEffort
+Node-Selectors:  <none>
+Tolerations:     <none>
+Events:
+  Type     Reason                 Age              From               Message
+  ----     ------                 ----             ----               -------
+  Warning  FailedScheduling       2m (x2 over 2m)  default-scheduler  0/1 nodes are available: 1 NodeNotReady.
+  Normal   Scheduled              2m               default-scheduler  Successfully assigned kubernetes-bootcamp-5dbf48f7d4-v8m9c to host01
+  Normal   SuccessfulMountVolume  2m               kubelet, host01    MountVolume.SetUp succeeded for volume "default-token-lk44c"
+  Normal   Pulled                 2m               kubelet, host01    Container image "gcr.io/google-samples/kubernetes-bootcamp:v1" already present on machine
+  Normal   Created                2m               kubelet, host01    Created container
+  Normal   Started                2m               kubelet, host01    Started container
+```
+
+To update the image of the application to version 2, use the `set image` command, followed by the deployment name and the new image version:
+
+```shell
+$ kubectl set image deployments/kubernetes-bootcamp kubernetes-bootcamp=jocatalin/kubernetes-bootcamp:v2
+deployment "kubernetes-bootcamp" image updated
+```
+
+The command notified the Deployment to use a different image for your app and initiated a rolling update. Check the status of the new Pods, and view the old one terminating with the get pods command:
+
+```shell
+$ kubectl get pods
+NAME                                   READY     STATUS        RESTARTS   AGE
+kubernetes-bootcamp-5dbf48f7d4-5wzvs   1/1       Terminating   0          3m
+kubernetes-bootcamp-5dbf48f7d4-d4gsv   1/1       Terminating   0          3m
+kubernetes-bootcamp-5dbf48f7d4-r4vww   1/1       Terminating   0          3m
+kubernetes-bootcamp-5dbf48f7d4-v8m9c   1/1       Terminating   0          3m
+kubernetes-bootcamp-7689dc585d-c7flq   1/1       Running       0          26s
+kubernetes-bootcamp-7689dc585d-ttdts   1/1       Running       0          26s
+kubernetes-bootcamp-7689dc585d-wz8fr   1/1       Running       0          23s
+kubernetes-bootcamp-7689dc585d-zxdj9   1/1       Running       0          23s
+```
+
+
+### Verify an update
+
+First, let’s check that the App is running. To find out the exposed IP and Port we can use describe service:
+
+```shell
+$ kubectl describe services/kubernetes-bootcamp
+Name:                     kubernetes-bootcamp
+Namespace:                default
+Labels:                   run=kubernetes-bootcamp
+Annotations:              <none>
+Selector:                 run=kubernetes-bootcamp
+Type:                     NodePort
+IP:                       10.103.129.196
+Port:                     <unset>  8080/TCP
+TargetPort:               8080/TCP
+NodePort:                 <unset>  31058/TCP
+Endpoints:                172.18.0.10:8080,172.18.0.11:8080,172.18.0.8:8080 + 1 more...
+Session Affinity:         None
+External Traffic Policy:  Cluster
+Events:                   <none>
+```
+
+Create an environment variable called NODE_PORT that has the value of the Node port assigned:
+
+```shell
+$ export NODE_PORT=$(kubectl get services/kubernetes-bootcamp -o go-template='{{(index .spec.ports 0).nodePort}}')
+$ echo NODE_PORT=$NODE_PORT
+NODE_PORT=31058
+```
+
+Next, we’ll do a curl to the the exposed IP and port:
+
+```shell
+$ curl $(minikube ip):$NODE_PORT
+Hello Kubernetes bootcamp! | Running on: kubernetes-bootcamp-7689dc585d-ttdts | v=2
+```
+
+We hit a different Pod with every request and we see that all Pods are running the latest version (v2).
+
+The update can be confirmed also by running a rollout status command:
+
+```shell
+$ kubectl rollout status deployments/kubernetes-bootcamp
+deployment "kubernetes-bootcamp" successfully rolled out
+```
+
+To view the current image version of the app, run a describe command against the Pods:
+
+```shell
+$ kubectl describe pods
+Name:           kubernetes-bootcamp-7689dc585d-c7flq
+Namespace:      default
+Node:           host01/172.17.0.126
+Start Time:     Wed, 11 Apr 2018 09:22:58 +0000
+Labels:         pod-template-hash=3245871418
+                run=kubernetes-bootcamp
+Annotations:    <none>
+Status:         Running
+IP:             172.18.0.8
+Controlled By:  ReplicaSet/kubernetes-bootcamp-7689dc585d
+Containers:
+  kubernetes-bootcamp:
+    Container ID:   docker://a31f0122ac605bc659c9f862b22b5df2f68ad54fbe59b00ce7893d0d9eb83519
+    Image:          jocatalin/kubernetes-bootcamp:v2
+    Image ID:       docker-pullable://jocatalin/kubernetes-bootcamp@sha256:fb1a3ced00cecfc1f83f18ab5cd14199e30adc1b49aa4244f5d65ad3f5feb2a5
+    Port:           8080/TCP
+    State:          Running
+      Started:      Wed, 11 Apr 2018 09:23:00 +0000
+    Ready:          True
+    Restart Count:  0
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from default-token-lk44c (ro)
+Conditions:
+  Type           Status
+  Initialized    True
+  Ready          True
+  PodScheduled   True
+Volumes:
+  default-token-lk44c:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  default-token-lk44c
+    Optional:    false
+QoS Class:       BestEffort
+Node-Selectors:  <none>
+Tolerations:     <none>
+Events:
+  Type    Reason                 Age   From               Message
+  ----    ------                 ----  ----               -------
+  Normal  Scheduled              7m    default-scheduler  Successfully assigned kubernetes-bootcamp-7689dc585d-c7flq to host01
+  Normal  SuccessfulMountVolume  7m    kubelet, host01    MountVolume.SetUp succeeded for volume "default-token-lk44c"
+  Normal  Pulled                 7m    kubelet, host01    Container image "jocatalin/kubernetes-bootcamp:v2" already present on machine
+  Normal  Created                7m    kubelet, host01    Created container
+  Normal  Started                7m    kubelet, host01    Started container
+
+
+Name:           kubernetes-bootcamp-7689dc585d-ttdts
+Namespace:      default
+Node:           host01/172.17.0.126
+Start Time:     Wed, 11 Apr 2018 09:22:58 +0000
+Labels:         pod-template-hash=3245871418
+                run=kubernetes-bootcamp
+Annotations:    <none>
+Status:         Running
+IP:             172.18.0.9
+Controlled By:  ReplicaSet/kubernetes-bootcamp-7689dc585d
+Containers:
+  kubernetes-bootcamp:
+    Container ID:   docker://098504fbff604192a59b579ac714b7d5e59f25efd97af26fd9ef9b5facb3bdb9
+    Image:          jocatalin/kubernetes-bootcamp:v2
+    Image ID:       docker-pullable://jocatalin/kubernetes-bootcamp@sha256:fb1a3ced00cecfc1f83f18ab5cd14199e30adc1b49aa4244f5d65ad3f5feb2a5
+    Port:           8080/TCP
+    State:          Running
+      Started:      Wed, 11 Apr 2018 09:23:00 +0000
+    Ready:          True
+    Restart Count:  0
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from default-token-lk44c (ro)
+Conditions:
+  Type           Status
+  Initialized    True
+  Ready          True
+  PodScheduled   True
+Volumes:
+  default-token-lk44c:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  default-token-lk44c
+    Optional:    false
+QoS Class:       BestEffort
+Node-Selectors:  <none>
+Tolerations:     <none>
+Events:
+  Type    Reason                 Age   From               Message
+  ----    ------                 ----  ----               -------
+  Normal  Scheduled              7m    default-scheduler  Successfully assigned kubernetes-bootcamp-7689dc585d-ttdts to host01
+  Normal  SuccessfulMountVolume  7m    kubelet, host01    MountVolume.SetUp succeeded for volume "default-token-lk44c"
+  Normal  Pulled                 7m    kubelet, host01    Container image "jocatalin/kubernetes-bootcamp:v2" already present on machine
+  Normal  Created                7m    kubelet, host01    Created container
+  Normal  Started                7m    kubelet, host01    Started container
+
+
+Name:           kubernetes-bootcamp-7689dc585d-wz8fr
+Namespace:      default
+Node:           host01/172.17.0.126
+Start Time:     Wed, 11 Apr 2018 09:23:01 +0000
+Labels:         pod-template-hash=3245871418
+                run=kubernetes-bootcamp
+Annotations:    <none>
+Status:         Running
+IP:             172.18.0.10
+Controlled By:  ReplicaSet/kubernetes-bootcamp-7689dc585d
+Containers:
+  kubernetes-bootcamp:
+    Container ID:   docker://16361a12cc3f9997dbc4d0936023eb9ad7ca010ec55954fc954593e617e82c01
+    Image:          jocatalin/kubernetes-bootcamp:v2
+    Image ID:       docker-pullable://jocatalin/kubernetes-bootcamp@sha256:fb1a3ced00cecfc1f83f18ab5cd14199e30adc1b49aa4244f5d65ad3f5feb2a5
+    Port:           8080/TCP
+    State:          Running
+      Started:      Wed, 11 Apr 2018 09:23:03 +0000
+    Ready:          True
+    Restart Count:  0
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from default-token-lk44c (ro)
+Conditions:
+  Type           Status
+  Initialized    True
+  Ready          True
+  PodScheduled   True
+Volumes:
+  default-token-lk44c:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  default-token-lk44c
+    Optional:    false
+QoS Class:       BestEffort
+Node-Selectors:  <none>
+Tolerations:     <none>
+Events:
+  Type    Reason                 Age   From               Message
+  ----    ------                 ----  ----               -------
+  Normal  Scheduled              7m    default-scheduler  Successfully assigned kubernetes-bootcamp-7689dc585d-wz8fr to host01
+  Normal  SuccessfulMountVolume  7m    kubelet, host01    MountVolume.SetUp succeeded for volume "default-token-lk44c"
+  Normal  Pulled                 7m    kubelet, host01    Container image "jocatalin/kubernetes-bootcamp:v2" already present on machine
+  Normal  Created                7m    kubelet, host01    Created container
+  Normal  Started                7m    kubelet, host01    Started container
+
+
+Name:           kubernetes-bootcamp-7689dc585d-zxdj9
+Namespace:      default
+Node:           host01/172.17.0.126
+Start Time:     Wed, 11 Apr 2018 09:23:01 +0000
+Labels:         pod-template-hash=3245871418
+                run=kubernetes-bootcamp
+Annotations:    <none>
+Status:         Running
+IP:             172.18.0.11
+Controlled By:  ReplicaSet/kubernetes-bootcamp-7689dc585d
+Containers:
+  kubernetes-bootcamp:
+    Container ID:   docker://9ac8389d50260f9ed372b10f8d407423cb00a2f7685d5c24b72fd6a5a9dba921
+    Image:          jocatalin/kubernetes-bootcamp:v2
+    Image ID:       docker-pullable://jocatalin/kubernetes-bootcamp@sha256:fb1a3ced00cecfc1f83f18ab5cd14199e30adc1b49aa4244f5d65ad3f5feb2a5
+    Port:           8080/TCP
+    State:          Running
+      Started:      Wed, 11 Apr 2018 09:23:04 +0000
+    Ready:          True
+    Restart Count:  0
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from default-token-lk44c (ro)
+Conditions:
+  Type           Status
+  Initialized    True
+  Ready          True
+  PodScheduled   True
+Volumes:
+  default-token-lk44c:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  default-token-lk44c
+    Optional:    false
+QoS Class:       BestEffort
+Node-Selectors:  <none>
+Tolerations:     <none>
+Events:
+  Type    Reason                 Age   From               Message
+  ----    ------                 ----  ----               -------
+  Normal  Scheduled              7m    default-scheduler  Successfully assigned kubernetes-bootcamp-7689dc585d-zxdj9 to host01
+  Normal  SuccessfulMountVolume  7m    kubelet, host01    MountVolume.SetUp succeeded for volume "default-token-lk44c"
+  Normal  Pulled                 7m    kubelet, host01    Container image "jocatalin/kubernetes-bootcamp:v2" already present on machine
+  Normal  Created                7m    kubelet, host01    Created container
+  Normal  Started                7m    kubelet, host01    Started container
+```
+
+We run now version 2 of the app (look at the Image field)
+
+
+### Rollback an update
+
+Let’s perform another update, and deploy image tagged as `v10`:
+
+```shell
+kubectl set image deployments/kubernetes-bootcamp kubernetes-bootcamp=gcr.io/google-samples/kubernetes-bootcamp:v1
+```
+
+Use `get deployments` to see the status of the deployment:
+
+```shell
+$ kubectl get deployments
+NAME                  DESIRED   CURRENT   UP-TO-DATE   AVAILABLE   AGE
+kubernetes-bootcamp   4         5         2            3           13m
+```
+
+And something is wrong… We do not have the desired number of Pods available. List the Pods again:
+
+```shell
+$ kubectl get pods
+NAME                                   READY     STATUS             RESTARTS   AGE
+kubernetes-bootcamp-5569c6b8d6-g6mlz   0/1       ErrImagePull       0          2m
+kubernetes-bootcamp-5569c6b8d6-swbgw   0/1       ImagePullBackOff   0          2m
+kubernetes-bootcamp-7689dc585d-c7flq   1/1       Running            0          11m
+kubernetes-bootcamp-7689dc585d-ttdts   1/1       Running            0          11m
+kubernetes-bootcamp-7689dc585d-wz8fr   1/1       Running            0          11m
+```
+
+A `describe` command on the Pods should give more insights:
+
+```shell
+$ kubectl describe pods
+Name:           kubernetes-bootcamp-5569c6b8d6-g6mlz
+Namespace:      default
+Node:           host01/172.17.0.126
+Start Time:     Wed, 11 Apr 2018 09:32:17 +0000
+Labels:         pod-template-hash=1125726482
+                run=kubernetes-bootcamp
+Annotations:    <none>
+Status:         Pending
+IP:             172.18.0.2
+Controlled By:  ReplicaSet/kubernetes-bootcamp-5569c6b8d6
+Containers:
+  kubernetes-bootcamp:
+    Container ID:
+    Image:          gcr.io/google-samples/kubernetes-bootcamp:v10
+    Image ID:
+    Port:           8080/TCP
+    State:          Waiting
+      Reason:       ImagePullBackOff
+    Ready:          False
+    Restart Count:  0
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from default-token-lk44c (ro)
+Conditions:
+  Type           Status
+  Initialized    True
+  Ready          False
+  PodScheduled   True
+Volumes:
+  default-token-lk44c:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  default-token-lk44c
+    Optional:    false
+QoS Class:       BestEffort
+Node-Selectors:  <none>
+Tolerations:     <none>
+Events:
+  Type     Reason                 Age               From               Message
+  ----     ------                 ----              ----               -------
+  Normal   Scheduled              2m                default-scheduler  Successfully assigned kubernetes-bootcamp-5569c6b8d6-g6mlz to host01
+  Normal   SuccessfulMountVolume  2m                kubelet, host01    MountVolume.SetUp succeeded for volume "default-token-lk44c"
+  Normal   Pulling                45s (x4 over 2m)  kubelet, host01    pulling image "gcr.io/google-samples/kubernetes-bootcamp:v10"
+  Warning  Failed                 44s (x4 over 2m)  kubelet, host01    Failed to pull image "gcr.io/google-samples/kubernetes-bootcamp:v10": rpc error: code = Unknown desc = Error response from daemon: manifest for gcr.io/google-samples/kubernetes-bootcamp:v10 not found
+  Warning  Failed                 44s (x4 over 2m)  kubelet, host01    Error: ErrImagePull
+  Normal   BackOff                33s (x6 over 2m)  kubelet, host01    Back-off pulling image "gcr.io/google-samples/kubernetes-bootcamp:v10"
+  Warning  Failed                 33s (x6 over 2m)  kubelet, host01    Error: ImagePullBackOff
+
+
+Name:           kubernetes-bootcamp-5569c6b8d6-swbgw
+Namespace:      default
+Node:           host01/172.17.0.126
+Start Time:     Wed, 11 Apr 2018 09:32:17 +0000
+Labels:         pod-template-hash=1125726482
+                run=kubernetes-bootcamp
+Annotations:    <none>
+Status:         Pending
+IP:             172.18.0.3
+Controlled By:  ReplicaSet/kubernetes-bootcamp-5569c6b8d6
+Containers:
+  kubernetes-bootcamp:
+    Container ID:
+    Image:          gcr.io/google-samples/kubernetes-bootcamp:v10
+    Image ID:
+    Port:           8080/TCP
+    State:          Waiting
+      Reason:       ImagePullBackOff
+    Ready:          False
+    Restart Count:  0
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from default-token-lk44c (ro)
+Conditions:
+  Type           Status
+  Initialized    True
+  Ready          False
+  PodScheduled   True
+Volumes:
+  default-token-lk44c:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  default-token-lk44c
+    Optional:    false
+QoS Class:       BestEffort
+Node-Selectors:  <none>
+Tolerations:     <none>
+Events:
+  Type     Reason                 Age               From               Message
+  ----     ------                 ----              ----               -------
+  Normal   Scheduled              2m                default-scheduler  Successfully assigned kubernetes-bootcamp-5569c6b8d6-swbgw to host01
+  Normal   SuccessfulMountVolume  2m                kubelet, host01    MountVolume.SetUp succeeded for volume "default-token-lk44c"
+  Normal   Pulling                57s (x4 over 2m)  kubelet, host01    pulling image "gcr.io/google-samples/kubernetes-bootcamp:v10"
+  Warning  Failed                 56s (x4 over 2m)  kubelet, host01    Failed to pull image "gcr.io/google-samples/kubernetes-bootcamp:v10": rpc error: code = Unknown desc = Error response from daemon: manifest for gcr.io/google-samples/kubernetes-bootcamp:v10 not found
+  Warning  Failed                 56s (x4 over 2m)  kubelet, host01    Error: ErrImagePull
+  Normal   BackOff                32s (x6 over 2m)  kubelet, host01    Back-off pulling image "gcr.io/google-samples/kubernetes-bootcamp:v10"
+  Warning  Failed                 32s (x6 over 2m)  kubelet, host01    Error: ImagePullBackOff
+
+
+Name:           kubernetes-bootcamp-7689dc585d-c7flq
+Namespace:      default
+Node:           host01/172.17.0.126
+Start Time:     Wed, 11 Apr 2018 09:22:58 +0000
+Labels:         pod-template-hash=3245871418
+                run=kubernetes-bootcamp
+Annotations:    <none>
+Status:         Running
+IP:             172.18.0.8
+Controlled By:  ReplicaSet/kubernetes-bootcamp-7689dc585d
+Containers:
+  kubernetes-bootcamp:
+    Container ID:   docker://a31f0122ac605bc659c9f862b22b5df2f68ad54fbe59b00ce7893d0d9eb83519
+    Image:          jocatalin/kubernetes-bootcamp:v2
+    Image ID:       docker-pullable://jocatalin/kubernetes-bootcamp@sha256:fb1a3ced00cecfc1f83f18ab5cd14199e30adc1b49aa4244f5d65ad3f5feb2a5
+    Port:           8080/TCP
+    State:          Running
+      Started:      Wed, 11 Apr 2018 09:23:00 +0000
+    Ready:          True
+    Restart Count:  0
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from default-token-lk44c (ro)
+Conditions:
+  Type           Status
+  Initialized    True
+  Ready          True
+  PodScheduled   True
+Volumes:
+  default-token-lk44c:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  default-token-lk44c
+    Optional:    false
+QoS Class:       BestEffort
+Node-Selectors:  <none>
+Tolerations:     <none>
+Events:
+  Type    Reason                 Age   From               Message
+  ----    ------                 ----  ----               -------
+  Normal  Scheduled              11m   default-scheduler  Successfully assigned kubernetes-bootcamp-7689dc585d-c7flq to host01
+  Normal  SuccessfulMountVolume  11m   kubelet, host01    MountVolume.SetUp succeeded for volume "default-token-lk44c"
+  Normal  Pulled                 11m   kubelet, host01    Container image "jocatalin/kubernetes-bootcamp:v2" already present on machine
+  Normal  Created                11m   kubelet, host01    Created container
+  Normal  Started                11m   kubelet, host01    Started container
+
+
+Name:           kubernetes-bootcamp-7689dc585d-ttdts
+Namespace:      default
+Node:           host01/172.17.0.126
+Start Time:     Wed, 11 Apr 2018 09:22:58 +0000
+Labels:         pod-template-hash=3245871418
+                run=kubernetes-bootcamp
+Annotations:    <none>
+Status:         Running
+IP:             172.18.0.9
+Controlled By:  ReplicaSet/kubernetes-bootcamp-7689dc585d
+Containers:
+  kubernetes-bootcamp:
+    Container ID:   docker://098504fbff604192a59b579ac714b7d5e59f25efd97af26fd9ef9b5facb3bdb9
+    Image:          jocatalin/kubernetes-bootcamp:v2
+    Image ID:       docker-pullable://jocatalin/kubernetes-bootcamp@sha256:fb1a3ced00cecfc1f83f18ab5cd14199e30adc1b49aa4244f5d65ad3f5feb2a5
+    Port:           8080/TCP
+    State:          Running
+      Started:      Wed, 11 Apr 2018 09:23:00 +0000
+    Ready:          True
+    Restart Count:  0
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from default-token-lk44c (ro)
+Conditions:
+  Type           Status
+  Initialized    True
+  Ready          True
+  PodScheduled   True
+Volumes:
+  default-token-lk44c:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  default-token-lk44c
+    Optional:    false
+QoS Class:       BestEffort
+Node-Selectors:  <none>
+Tolerations:     <none>
+Events:
+  Type    Reason                 Age   From               Message
+  ----    ------                 ----  ----               -------
+  Normal  Scheduled              11m   default-scheduler  Successfully assigned kubernetes-bootcamp-7689dc585d-ttdts to host01
+  Normal  SuccessfulMountVolume  11m   kubelet, host01    MountVolume.SetUp succeeded for volume "default-token-lk44c"
+  Normal  Pulled                 11m   kubelet, host01    Container image "jocatalin/kubernetes-bootcamp:v2" already present on machine
+  Normal  Created                11m   kubelet, host01    Created container
+  Normal  Started                11m   kubelet, host01    Started container
+
+
+Name:           kubernetes-bootcamp-7689dc585d-wz8fr
+Namespace:      default
+Node:           host01/172.17.0.126
+Start Time:     Wed, 11 Apr 2018 09:23:01 +0000
+Labels:         pod-template-hash=3245871418
+                run=kubernetes-bootcamp
+Annotations:    <none>
+Status:         Running
+IP:             172.18.0.10
+Controlled By:  ReplicaSet/kubernetes-bootcamp-7689dc585d
+Containers:
+  kubernetes-bootcamp:
+    Container ID:   docker://16361a12cc3f9997dbc4d0936023eb9ad7ca010ec55954fc954593e617e82c01
+    Image:          jocatalin/kubernetes-bootcamp:v2
+    Image ID:       docker-pullable://jocatalin/kubernetes-bootcamp@sha256:fb1a3ced00cecfc1f83f18ab5cd14199e30adc1b49aa4244f5d65ad3f5feb2a5
+    Port:           8080/TCP
+    State:          Running
+      Started:      Wed, 11 Apr 2018 09:23:03 +0000
+    Ready:          True
+    Restart Count:  0
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from default-token-lk44c (ro)
+Conditions:
+  Type           Status
+  Initialized    True
+  Ready          True
+  PodScheduled   True
+Volumes:
+  default-token-lk44c:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  default-token-lk44c
+    Optional:    false
+QoS Class:       BestEffort
+Node-Selectors:  <none>
+Tolerations:     <none>
+Events:
+  Type    Reason                 Age   From               Message
+  ----    ------                 ----  ----               -------
+  Normal  Scheduled              11m   default-scheduler  Successfully assigned kubernetes-bootcamp-7689dc585d-wz8fr to host01
+  Normal  SuccessfulMountVolume  11m   kubelet, host01    MountVolume.SetUp succeeded for volume "default-token-lk44c"
+  Normal  Pulled                 11m   kubelet, host01    Container image "jocatalin/kubernetes-bootcamp:v2" already present on machine
+  Normal  Created                11m   kubelet, host01    Created container
+  Normal  Started                11m   kubelet, host01    Started container
+$
+```
+
+There is no image called `v10` in the repository. Let’s roll back to our previously working version. We’ll use the `rollout` undo command:
+
+```shell
+$ kubectl rollout undo deployments/kubernetes-bootcamp
+deployment "kubernetes-bootcamp"
+```
+
+The `rollout` command reverted the deployment to the previous known state (v2 of the image). Updates are versioned and you can revert to any previously know state of a Deployment. List again the Pods:
+
+```shell
+$ kubectl get pods
+NAME                                   READY     STATUS    RESTARTS   AGE
+kubernetes-bootcamp-7689dc585d-c7flq   1/1       Running   0          12m
+kubernetes-bootcamp-7689dc585d-g9jmg   1/1       Running   0          22s
+kubernetes-bootcamp-7689dc585d-ttdts   1/1       Running   0          12m
+kubernetes-bootcamp-7689dc585d-wz8fr   1/1       Running   0          12m
+```
+
+Four Pods are running. Check again the image deployed on the them:
+
+```shell
+$ kubectl describe pods
+Name:           kubernetes-bootcamp-7689dc585d-c7flq
+Namespace:      default
+Node:           host01/172.17.0.126
+Start Time:     Wed, 11 Apr 2018 09:22:58 +0000
+Labels:         pod-template-hash=3245871418
+                run=kubernetes-bootcamp
+Annotations:    <none>
+Status:         Running
+IP:             172.18.0.8
+Controlled By:  ReplicaSet/kubernetes-bootcamp-7689dc585d
+Containers:
+  kubernetes-bootcamp:
+    Container ID:   docker://a31f0122ac605bc659c9f862b22b5df2f68ad54fbe59b00ce7893d0d9eb83519
+    Image:          jocatalin/kubernetes-bootcamp:v2
+    Image ID:       docker-pullable://jocatalin/kubernetes-bootcamp@sha256:fb1a3ced00cecfc1f83f18ab5cd14199e30adc1b49aa4244f5d65ad3f5feb2a5
+    Port:           8080/TCP
+    State:          Running
+      Started:      Wed, 11 Apr 2018 09:23:00 +0000
+    Ready:          True
+    Restart Count:  0
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from default-token-lk44c (ro)
+Conditions:
+  Type           Status
+  Initialized    True
+  Ready          True
+  PodScheduled   True
+Volumes:
+  default-token-lk44c:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  default-token-lk44c
+    Optional:    false
+QoS Class:       BestEffort
+Node-Selectors:  <none>
+Tolerations:     <none>
+Events:
+  Type    Reason                 Age   From               Message
+  ----    ------                 ----  ----               -------
+  Normal  Scheduled              13m   default-scheduler  Successfully assigned kubernetes-bootcamp-7689dc585d-c7flq to host01
+  Normal  SuccessfulMountVolume  13m   kubelet, host01    MountVolume.SetUp succeeded for volume "default-token-lk44c"
+  Normal  Pulled                 13m   kubelet, host01    Container image "jocatalin/kubernetes-bootcamp:v2" already present on machine
+  Normal  Created                13m   kubelet, host01    Created container
+  Normal  Started                13m   kubelet, host01    Started container
+
+
+Name:           kubernetes-bootcamp-7689dc585d-g9jmg
+Namespace:      default
+Node:           host01/172.17.0.126
+Start Time:     Wed, 11 Apr 2018 09:35:31 +0000
+Labels:         pod-template-hash=3245871418
+                run=kubernetes-bootcamp
+Annotations:    <none>
+Status:         Running
+IP:             172.18.0.4
+Controlled By:  ReplicaSet/kubernetes-bootcamp-7689dc585d
+Containers:
+  kubernetes-bootcamp:
+    Container ID:   docker://40d9aea54afcc33a3bebf01c4f1821404d5745b7b5824892b9b2b1ce77700ad8
+    Image:          jocatalin/kubernetes-bootcamp:v2
+    Image ID:       docker-pullable://jocatalin/kubernetes-bootcamp@sha256:fb1a3ced00cecfc1f83f18ab5cd14199e30adc1b49aa4244f5d65ad3f5feb2a5
+    Port:           8080/TCP
+    State:          Running
+      Started:      Wed, 11 Apr 2018 09:35:35 +0000
+    Ready:          True
+    Restart Count:  0
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from default-token-lk44c (ro)
+Conditions:
+  Type           Status
+  Initialized    True
+  Ready          True
+  PodScheduled   True
+Volumes:
+  default-token-lk44c:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  default-token-lk44c
+    Optional:    false
+QoS Class:       BestEffort
+Node-Selectors:  <none>
+Tolerations:     <none>
+Events:
+  Type    Reason                 Age   From               Message
+  ----    ------                 ----  ----               -------
+  Normal  Scheduled              36s   default-scheduler  Successfully assigned kubernetes-bootcamp-7689dc585d-g9jmg to host01
+  Normal  SuccessfulMountVolume  36s   kubelet, host01    MountVolume.SetUp succeeded for volume "default-token-lk44c"
+  Normal  Pulled                 33s   kubelet, host01    Container image "jocatalin/kubernetes-bootcamp:v2" already present on machine
+  Normal  Created                32s   kubelet, host01    Created container
+  Normal  Started                31s   kubelet, host01    Started container
+
+
+Name:           kubernetes-bootcamp-7689dc585d-ttdts
+Namespace:      default
+Node:           host01/172.17.0.126
+Start Time:     Wed, 11 Apr 2018 09:22:58 +0000
+Labels:         pod-template-hash=3245871418
+                run=kubernetes-bootcamp
+Annotations:    <none>
+Status:         Running
+IP:             172.18.0.9
+Controlled By:  ReplicaSet/kubernetes-bootcamp-7689dc585d
+Containers:
+  kubernetes-bootcamp:
+    Container ID:   docker://098504fbff604192a59b579ac714b7d5e59f25efd97af26fd9ef9b5facb3bdb9
+    Image:          jocatalin/kubernetes-bootcamp:v2
+    Image ID:       docker-pullable://jocatalin/kubernetes-bootcamp@sha256:fb1a3ced00cecfc1f83f18ab5cd14199e30adc1b49aa4244f5d65ad3f5feb2a5
+    Port:           8080/TCP
+    State:          Running
+      Started:      Wed, 11 Apr 2018 09:23:00 +0000
+    Ready:          True
+    Restart Count:  0
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from default-token-lk44c (ro)
+Conditions:
+  Type           Status
+  Initialized    True
+  Ready          True
+  PodScheduled   True
+Volumes:
+  default-token-lk44c:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  default-token-lk44c
+    Optional:    false
+QoS Class:       BestEffort
+Node-Selectors:  <none>
+Tolerations:     <none>
+Events:
+  Type    Reason                 Age   From               Message
+  ----    ------                 ----  ----               -------
+  Normal  Scheduled              13m   default-scheduler  Successfully assigned kubernetes-bootcamp-7689dc585d-ttdts to host01
+  Normal  SuccessfulMountVolume  13m   kubelet, host01    MountVolume.SetUp succeeded for volume "default-token-lk44c"
+  Normal  Pulled                 13m   kubelet, host01    Container image "jocatalin/kubernetes-bootcamp:v2" already present on machine
+  Normal  Created                13m   kubelet, host01    Created container
+  Normal  Started                13m   kubelet, host01    Started container
+
+
+Name:           kubernetes-bootcamp-7689dc585d-wz8fr
+Namespace:      default
+Node:           host01/172.17.0.126
+Start Time:     Wed, 11 Apr 2018 09:23:01 +0000
+Labels:         pod-template-hash=3245871418
+                run=kubernetes-bootcamp
+Annotations:    <none>
+Status:         Running
+IP:             172.18.0.10
+Controlled By:  ReplicaSet/kubernetes-bootcamp-7689dc585d
+Containers:
+  kubernetes-bootcamp:
+    Container ID:   docker://16361a12cc3f9997dbc4d0936023eb9ad7ca010ec55954fc954593e617e82c01
+    Image:          jocatalin/kubernetes-bootcamp:v2
+    Image ID:       docker-pullable://jocatalin/kubernetes-bootcamp@sha256:fb1a3ced00cecfc1f83f18ab5cd14199e30adc1b49aa4244f5d65ad3f5feb2a5
+    Port:           8080/TCP
+    State:          Running
+      Started:      Wed, 11 Apr 2018 09:23:03 +0000
+    Ready:          True
+    Restart Count:  0
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from default-token-lk44c (ro)
+Conditions:
+  Type           Status
+  Initialized    True
+  Ready          True
+  PodScheduled   True
+Volumes:
+  default-token-lk44c:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  default-token-lk44c
+    Optional:    false
+QoS Class:       BestEffort
+Node-Selectors:  <none>
+Tolerations:     <none>
+Events:
+  Type    Reason                 Age   From               Message
+  ----    ------                 ----  ----               -------
+  Normal  Scheduled              13m   default-scheduler  Successfully assigned kubernetes-bootcamp-7689dc585d-wz8fr to host01
+  Normal  SuccessfulMountVolume  13m   kubelet, host01    MountVolume.SetUp succeeded for volume "default-token-lk44c"
+  Normal  Pulled                 13m   kubelet, host01    Container image "jocatalin/kubernetes-bootcamp:v2" already present on machine
+  Normal  Created                13m   kubelet, host01    Created container
+  Normal  Started                13m   kubelet, host01    Started container
+$
+```
+
+We see that the deployment is using a stable version of the app (v2). The Rollback was successful.
