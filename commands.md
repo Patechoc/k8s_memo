@@ -2,7 +2,6 @@
 
 Learning the concepts of Kubernetes described here: https://kubernetes.io/docs/concepts/
 
-
 * [Basic initial commands](#basic-initial-commands)
 * [Deploy your first app on Kubernetes using kubectl](#deploy-your-first-app-on-kubernetes-using-kubectl)
 * [Troubleshoot Kubernetes applications](#troubleshoot-kubernetes-applications)
@@ -12,6 +11,13 @@ Learning the concepts of Kubernetes described here: https://kubernetes.io/docs/c
 * [Exposing Your App](#exposing-your-app)
    * [Create a new service](#create-a-new-service)
    * [Using labels](#using-labels)
+* [Running Multiple Instances of Your App](#running-multiple-instances-of-your-app)
+   * [Load Balancing](#load-balancing)
+   * [Scale Down](#scale-down)
+* [Performing a Rolling Update](#performing-a-rolling-update)
+   * [Update the version of the app](#update-the-version-of-the-app)
+   * [Verify an update](#verify-an-update)
+   * [Rollback an update](#rollback-an-update)
 
 
 
