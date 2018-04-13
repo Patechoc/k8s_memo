@@ -14,5 +14,6 @@ A few commands that come handy:
 
 * `grep -i kubeconfig ~/.bashrc`  # See where my configuration files are located
 * `kubectl config view`  # To see all 'contexts' = all tuples {cluster, user, namespace} available
+* `kubectl config --kubeconfig=/path/to/config-demo vuse-context exp-scratch` # To switch to the context {cluster=..., user=..., namespace=...} with name `exp-scratch`.
 * `kubectl config --kubeconfig=/path/to/config-demo view`  # to see the configurations within oen config file
-* `kubectl config --kubeconfig=config-demo view --minify`  # To see only the configuration information associated with the current context, use the `--minify` flag.
+* `kubectl config --kubeconfig=/path/to/config-demo view --minify`  # To see only the configuration information associated with the current context, use the `--minify` flag.
