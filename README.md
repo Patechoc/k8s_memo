@@ -1,5 +1,9 @@
 # k8s_memo
-Notes from following the official tutorial and documentation https://kubernetes.io/docs/concepts/
+
+Notes from following the official tutorials and documentation:
+
+* https://kubernetes.io/docs/concepts/
+* https://kubernetes.io/docs/reference/kubectl/cheatsheet/
 
 ## Basic commands
 
@@ -23,3 +27,4 @@ A few commands that come handy:
 ## To explore
 
 * [Kompose](http://kompose.io/): A conversion tool to go from Docker Compose to Kubernetes.
+* [Helm](https://helm.sh/): the package manager for Kubernetes.
